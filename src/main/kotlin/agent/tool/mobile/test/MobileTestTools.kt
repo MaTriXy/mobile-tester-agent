@@ -177,7 +177,7 @@ class MobileTestTools : ToolSet {
 
     @Tool
     @LLMDescription(
-        description = "Get detailed information about the connected Android device using adb, " +
+        "Get detailed information about the connected Android device using adb, " +
                 "including manufacturer, model, Android version, SDK, platform, total memory," +
                 " data partition usage, battery level, and IP address."
     )

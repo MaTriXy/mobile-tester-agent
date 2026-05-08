@@ -4,11 +4,11 @@ import agent.model.MobileTesterConfig
 import agent.strategy.TestingStrategy
 import agent.tool.mobile.test.MobileTestTools
 import ai.koog.agents.core.agent.AIAgent
+import ai.koog.agents.core.agent.GraphAIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.feature.handler.AfterLLMCallContext
 import ai.koog.agents.core.feature.handler.AgentStartContext
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.core.tools.reflect.tools
 import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.params.LLMParams
@@ -44,13 +44,13 @@ object MobileTestAgent {
             toolRegistry = toolRegistry
         ) {
             handleEvents {
-                onBeforeAgentStarted { eventContext: AgentStartContext<*> ->
-                    println("Starting strategy: ${eventContext.strategy.name}")
+                onBeforeAgentStarted { eventContext: AgentStartContext ->
+                    println("Starting strategy: ${(eventContext.agent as? GraphAIAgent<*, *>)?.strategy?.name ?: eventContext.agent.id}")
                 }
 
                 onToolCall { eventContext ->
                     println(
-                        "Tool called: tool ${eventContext.tool.name}, args ${eventContext.toolArgs}"
+                        "Tool called: tool ${eventContext.toolName}, args ${eventContext.toolArgs}"
                     )
                 }
 
