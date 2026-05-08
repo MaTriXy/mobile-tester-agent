@@ -1,0 +1,4 @@
+nohup: ignoring input
+12:17:56.005 [main] INFO  Application - Autoreload is disabled because the development mode is off.
+12:17:56.082 [main] INFO  Application - Application started in 0.175 seconds.
+12:17:56.164 [DefaultDispatcher-worker-1] INFO  Application - Responding at http://0.0.0.0:8080
