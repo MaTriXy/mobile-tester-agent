@@ -1,9 +1,6 @@
 package server.model
 
-import agent.executor.GeminiExecutor
-import agent.executor.OllamaGwenExecutor
-import agent.executor.OllamaLlamaExecutor
-import agent.executor.OpenRouterExecutor
+import agent.executor.*
 import agent.model.MobileTesterConfig
 import kotlinx.serialization.Serializable
 
@@ -17,6 +14,7 @@ data class MobileTesterConfigAPI(
 
 fun MobileTesterConfigAPI.toMobileConfig() = MobileTesterConfig(
     executorInfo = when (executorInfoId.lowercase()) {
+        "deepseek" -> DeepSeekExecutor()
         "gemini" -> GeminiExecutor()
         "ollama_gwen" -> OllamaGwenExecutor()
         "ollama_llama" -> OllamaLlamaExecutor()

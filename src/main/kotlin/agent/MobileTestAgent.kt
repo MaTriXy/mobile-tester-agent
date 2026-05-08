@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalTime::class)
+
 package agent
 
 import agent.model.MobileTesterConfig
@@ -13,6 +15,7 @@ import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.params.LLMParams
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.time.ExperimentalTime
 
 object MobileTestAgent {
     private var config: MobileTesterConfig = MobileTesterConfig()
@@ -25,6 +28,7 @@ object MobileTestAgent {
                 system(
                     """
                     You're responsible for testing an Android app and perform actions on the Android app by request.
+                    Make sure to connect to the emulator before performing any actions.
                     YOU MUST PERFORM THE TEST STEPS SEQUENTIALLY.
                 """.trimIndent()
                 )
@@ -44,21 +48,21 @@ object MobileTestAgent {
             toolRegistry = toolRegistry
         ) {
             handleEvents {
-                onBeforeAgentStarted { eventContext: AgentStartContext ->
+                onAgentStarting { eventContext: AgentStartContext ->
                     println("Starting strategy: ${(eventContext.agent as? GraphAIAgent<*, *>)?.strategy?.name ?: eventContext.agent.id}")
                 }
 
-                onToolCall { eventContext ->
+                onToolCallStarting { eventContext ->
                     println(
                         "Tool called: tool ${eventContext.toolName}, args ${eventContext.toolArgs}"
                     )
                 }
 
-                onAgentRunError { eventContext ->
+                onAgentExecutionFailed { eventContext ->
                     println("An error occurred: ${eventContext.throwable.message}\n${eventContext.throwable.stackTraceToString()}")
                 }
 
-                onAgentFinished { eventContext ->
+                onAgentCompleted { eventContext ->
                     resultDeferred.complete(
                         if (eventContext.result != null) {
                             "onAgentFinished: ${eventContext.result.toString()}"
@@ -68,7 +72,7 @@ object MobileTestAgent {
                     )
                 }
 
-                onAfterLLMCall { eventContext ->
+                onLLMCallCompleted { eventContext ->
                     if (config.logTokensConsumption) {
                         logTokensConsumption(eventContext)
                     }

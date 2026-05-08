@@ -15,12 +15,8 @@ class MobileTestTools : ToolSet {
         "Connect the device or emulator and open the app if it is necessary" +
                 "THIS MUST BE THE INITIAL ACTION AND ONLY BE CALLED ONCE"
     )
-    fun startTestingScenario(
-        @LLMDescription("The name of the app which will tapped in the screen.")
-        appName: String
-    ): String {
-        connectDevice()
-        return tap(appName)
+    fun startTestingScenario(): String {
+        return connectDevice()
     }
 
     @Tool
