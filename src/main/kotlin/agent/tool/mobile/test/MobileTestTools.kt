@@ -231,13 +231,11 @@ class MobileTestTools : ToolSet {
                 "Returns 'OK: ...' or 'ERROR: ...'."
     )
     fun hideKeyboard(): String {
-        var result = AdbUtils.runAdb("shell", "input", "text", "\"\"")
-        if (result.contains("Error") || result.isBlank()) {
-            result = AdbUtils.runAdb("shell", "input", "keyevent", "111")
-            if (result.contains("Error") || result.isBlank()) {
-                result = AdbUtils.runAdb("shell", "input", "keyevent", "4")
-            }
-        }
+        // KEYCODE_BACK (4) is the only reliable way to dismiss the soft keyboard on this device.
+        // KEYCODE_ESCAPE (111) leaves the keyboard showing. BACK dismisses keyboard on first press;
+        // a second press would navigate back, but only if keyboard is already gone.
+        val result = AdbUtils.runAdb("shell", "input", "keyevent", "4")
+        Thread.sleep(500) // wait for keyboard animation to complete before next UI query
         return if (result.contains("Error")) "ERROR: hide keyboard failed: $result" else "OK: keyboard hidden"
     }
 
