@@ -1,15 +1,21 @@
 package agent.tool.mobile.test.utils
 
 object AdbUtils {
+    /** Serial of the device targeted for this test session. Set by connectDevice(). */
+    var targetSerial: String? = null
+
     /**
-     * Runs an adb command with the given arguments.
-     *
-     * @param args The arguments to pass to the adb command.
-     * @return The output of the command, or an error message if it fails.
+     * Runs an adb command with the given arguments, targeting [targetSerial] when set.
+     * This ensures commands go to the right device when multiple are attached.
      */
     fun runAdb(vararg args: String): String {
         return try {
-            val process = ProcessBuilder("adb", *args)
+            val cmd = buildList {
+                add("adb")
+                targetSerial?.let { add("-s"); add(it) }
+                addAll(args.toList())
+            }
+            val process = ProcessBuilder(cmd)
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
@@ -58,9 +64,13 @@ object AdbUtils {
                 } else {
                     val offline = devices.filter { it.contains("offline") }
                     val online = devices.filter { it.contains("device") && !it.contains("offline") }
+                    // Pin the target: prefer emulator, otherwise first online device.
+                    targetSerial = (online.firstOrNull { it.startsWith("emulator") } ?: online.firstOrNull())
+                        ?.split("\t")?.first()
                     buildString {
                         if (online.isNotEmpty()) append("Connected devices:\n${online.joinToString("\n")}\n")
                         if (offline.isNotEmpty()) append("Devices offline (check connection):\n${offline.joinToString("\n")}")
+                        targetSerial?.let { append("\nTargeting: $it") }
                     }.trim()
                 }
             } else {
