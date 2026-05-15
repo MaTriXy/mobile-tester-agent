@@ -14,6 +14,7 @@ data class MobileTesterConfigAPI(
 
 fun MobileTesterConfigAPI.toMobileConfig() = MobileTesterConfig(
     executorInfo = when (executorInfoId.lowercase()) {
+        "haiku" -> HaikuExecutor()
         "deepseek" -> DeepSeekExecutor()
         "gemini" -> GeminiExecutor()
         "ollama_gwen" -> OllamaGwenExecutor()
