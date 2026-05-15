@@ -10,7 +10,6 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.GraphAIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.feature.handler.agent.AgentStartingContext
-import ai.koog.agents.core.feature.handler.llm.LLMCallCompletedContext
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.prompt.dsl.prompt
@@ -21,7 +20,8 @@ import kotlin.time.ExperimentalTime
 object MobileTestAgent {
     private var config: MobileTesterConfig = MobileTesterConfig()
 
-    suspend fun runAgent(goal: String, steps: List<String>): String {
+    suspend fun runAgent(goal: String, packageName: String, steps: List<String>): String {
+        val appPackage = packageName
         val resultDeferred = CompletableDeferred<String>()
 
         val agentConfig = AIAgentConfig(
@@ -32,8 +32,13 @@ object MobileTestAgent {
                     to execute a list of test steps and report which ones passed or failed.
 
                     LIFECYCLE (strict):
-                      1. First action: call startTestingScenario once. Pass appPackage if the goal names a specific app.
-                      2. Execute every step in order, one step at a time.
+                      1. First action: call startTestingScenario(appPackage) ONCE, passing the EXACT
+                         `App package` value given in the user message — do not guess or modify it.
+                         This connects ADB and launches the target app via `am`/monkey. If it returns OK,
+                         the app is already on screen — do NOT tap any launcher icon, app drawer, or
+                         home screen entry to open it. If it returns ERROR, stop and FAIL the scenario;
+                         do not try to open the app manually.
+                      2. Execute every step in order, one step at a time, starting from the app's current screen.
                       3. Final action: call closeApp once.
                       4. After closeApp, emit ONE assistant message summarising each step as PASS or FAIL with a one-line reason.
 
@@ -64,7 +69,9 @@ object MobileTestAgent {
                       mid-action.
 
                     ANTI-PATTERNS — DO NOT:
-                      - Call connectDevice — startTestingScenario already connects.
+                      - Call startTestingScenario more than once — it is the FIRST action only.
+                      - Tap an app icon / launcher / home screen to open the target app. The app is launched
+                        programmatically via ADB inside startTestingScenario.
                       - Call closeApp between steps.
                       - Loop the same failing tool call > 2x in a row.
                       - Skip verification.
@@ -118,16 +125,12 @@ object MobileTestAgent {
                     )
                 }
 
-                onLLMCallCompleted { eventContext ->
-                    if (config.logTokensConsumption) {
-                        logTokensConsumption(eventContext)
-                    }
-                }
             }
         }
 
         val testScenario = buildString {
             appendLine("Goal: $goal")
+            appendLine("App package (use this exact value for startTestingScenario): $appPackage")
             appendLine("Steps:")
             steps.forEachIndexed { idx, step ->
                 appendLine("Step ${idx + 1}. $step")
@@ -140,22 +143,5 @@ object MobileTestAgent {
 
     fun updateConfiguration(newConfig: MobileTesterConfig) {
         config = newConfig
-    }
-
-    private fun logTokensConsumption(eventContext: LLMCallCompletedContext) {
-        val inputTokensCountList = eventContext.responses.map { it.metaInfo.inputTokensCount }
-        var inputTokensCount = 0
-        inputTokensCountList.forEach { inputTokensCount += (it ?: 0) }
-        println("INPUT tokens count: $inputTokensCount")
-
-        val outputTokensCountList = eventContext.responses.map { it.metaInfo.outputTokensCount }
-        var outputTokensCount = 0
-        outputTokensCountList.forEach { outputTokensCount += (it ?: 0) }
-        println("OUTPUT tokens count: $outputTokensCount")
-
-        val totalTokensCountList = eventContext.responses.map { it.metaInfo.totalTokensCount }
-        var totalTokensCount = 0
-        totalTokensCountList.forEach { totalTokensCount += (it ?: 0) }
-        println("TOTAL tokens count: $totalTokensCount")
     }
 }

@@ -15,32 +15,29 @@ class MobileTestTools : ToolSet {
 
     @Tool
     @LLMDescription(
-        "Connect the device/emulator and optionally launch an app. Call ONCE as the first action. " +
-                "If appPackage is provided, launches that package via monkey. " +
-                "Returns 'OK: ...' or 'ERROR: ...'."
+        "Connect the device/emulator and launch the target app via ADB. Call ONCE as the first action. " +
+                "Connects ADB, wakes the screen, force-stops any stale instance, launches the package via monkey, " +
+                "then verifies the package is foreground. After this returns OK the app IS open — do NOT tap " +
+                "a launcher icon or home screen to open it. " +
+                "Returns 'OK: launched <package> (foreground confirmed)' or 'ERROR: ...'."
     )
     fun startTestingScenario(
-        @LLMDescription("Optional Android package name to launch, e.g. com.android.settings.")
-        appPackage: String = ""
+        @LLMDescription("Android package name to launch, e.g. com.maikogram. Required.")
+        appPackage: String
     ): String {
+        if (appPackage.isBlank()) return "ERROR: appPackage is required"
         val connect = AdbUtils.connectDevice()
         if (connect.contains("No devices") || connect.startsWith("Failed") || connect.startsWith("Error")) {
             return "ERROR: $connect"
         }
-        // Wake the screen so UIAutomator captures real app UI, not AOD/lock screen.
         AdbUtils.runAdb("shell", "input", "keyevent", "224") // KEYCODE_WAKEUP
-        Thread.sleep(500)
-        AdbUtils.runAdb("shell", "wm", "dismiss-keyguard")   // no-op when PIN-protected
         Thread.sleep(300)
-        if (appPackage.isNotBlank()) {
-            val launch = AdbUtils.runAdb("shell", "monkey", "-p", appPackage, "-c", "android.intent.category.LAUNCHER", "1")
-            if (launch.contains("Error") || launch.contains("No activities")) {
-                return "ERROR: connected but failed to launch '$appPackage': $launch"
-            }
-            Thread.sleep(1500) // allow app to fully load before first UI query
-            return "OK: connected; launched $appPackage"
-        }
-        return "OK: $connect"
+        AdbUtils.runAdb("shell", "wm", "dismiss-keyguard")
+        Thread.sleep(200)
+        // Force-stop any stale instance so launch starts from a clean state.
+        AdbUtils.runAdb("shell", "am", "force-stop", appPackage)
+        Thread.sleep(200)
+        return AdbUtils.launchAndVerify(appPackage)
     }
 
     @Tool
@@ -140,12 +137,12 @@ class MobileTestTools : ToolSet {
     @Tool
     @LLMDescription(
         "Dump the raw UI hierarchy XML of the current screen. Use ONLY when stuck — prefer findUiElementsByText for targeted queries. " +
-                "Truncated to ~6KB. Returns the XML string or 'ERROR: ...'."
+                "Truncated to ~2KB. Returns the XML string or 'ERROR: ...'."
     )
     fun getScreenDump(): String {
         val xml = UiAutomatorUtils.dumpUiHierarchy()
         if (xml.startsWith("ERROR:")) return xml
-        return if (xml.length > 6000) xml.take(6000) + "\n... [truncated, use findUiElementsByText for targeted search]"
+        return if (xml.length > 2000) xml.take(2000) + "\n... [truncated, use findUiElementsByText for targeted search]"
         else xml
     }
 
@@ -253,13 +250,6 @@ class MobileTestTools : ToolSet {
         return if (result.contains("Error") || result.contains("No activities")) "ERROR: launch failed: $result"
         else "OK: launched $packageName"
     }
-
-    @Tool
-    @LLMDescription(
-        "Get detailed device info (manufacturer, model, Android version, SDK, battery, IP). " +
-                "Returns a formatted string or 'ERROR: ...'."
-    )
-    fun deviceInformation(): String = AdbUtils.deviceInformation()
 
     @Tool
     @LLMDescription(

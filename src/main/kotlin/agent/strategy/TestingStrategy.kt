@@ -8,7 +8,7 @@ import ai.koog.agents.core.environment.ReceivedToolResult
 object TestingStrategy {
     // Compress history only when token usage gets close to crowding the context window.
     // The previous value (1000) triggered compression on virtually every tool call, destroying step-by-step memory.
-    private const val MAX_TOKENS_THRESHOLD = 12000
+    private const val MAX_TOKENS_THRESHOLD = 8000
 
     // Defines the agent's workflow strategy for calculator operations
     val strategy = strategy<String, String>("TestingStrategy") {

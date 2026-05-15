@@ -2,6 +2,11 @@ package agent.tool.mobile.test.utils
 
 object UiAutomatorUtils {
 
+    private val NOISE_ATTRS = Regex(
+        " (?:index|package|class|checkable|checked|focusable|focused|scrollable|" +
+                "long-clickable|password|selected|NAF|instance|rotation)=\"[^\"]*\""
+    )
+
     fun dumpUiHierarchy(): String {
         val dumpResult = AdbUtils.runAdb("shell", "uiautomator", "dump")
         if (dumpResult.contains("Error")) {
@@ -11,7 +16,7 @@ object UiAutomatorUtils {
         val xml = AdbUtils.runAdb("shell", "cat", xmlPath)
         if (xml.isBlank() || xml.contains("Error") || xml.startsWith("Failed"))
             return "ERROR: Failed to read UI hierarchy XML."
-        return xml
+        return NOISE_ATTRS.replace(xml, "")
     }
 
     fun getScreenSize(): Pair<Int, Int>? {
@@ -41,7 +46,14 @@ object UiAutomatorUtils {
             "<node[^>]*$attrClause[^>]*bounds=\"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]\"",
             RegexOption.IGNORE_CASE
         )
-        return regex.findAll(xml).toList().map { UiMatchResult(it.groupValues) }
+        return regex.findAll(xml).toList().map { match ->
+            val groups = match.groupValues
+            val value = groups.drop(1).dropLast(4).firstOrNull { it.isNotEmpty() } ?: ""
+            val n = groups.size
+            val cx = (groups[n - 4].toInt() + groups[n - 2].toInt()) / 2
+            val cy = (groups[n - 3].toInt() + groups[n - 1].toInt()) / 2
+            UiMatchResult(value, cx, cy)
+        }
     }
 
     fun tapByText(matches: List<UiMatchResult>, position: Int): String {
@@ -49,18 +61,12 @@ object UiAutomatorUtils {
         if (position !in matches.indices) {
             return "ERROR: position $position out of bounds (${matches.size} matches)"
         }
-        val groups = matches[position].groupValues
-        val x1 = groups[groups.size - 4].toInt()
-        val y1 = groups[groups.size - 3].toInt()
-        val x2 = groups[groups.size - 2].toInt()
-        val y2 = groups[groups.size - 1].toInt()
-        val centerX = (x1 + x2) / 2
-        val centerY = (y1 + y2) / 2
-        val tapResult = AdbUtils.runAdb("shell", "input", "tap", centerX.toString(), centerY.toString())
+        val m = matches[position]
+        val tapResult = AdbUtils.runAdb("shell", "input", "tap", m.cx.toString(), m.cy.toString())
         return when {
-            tapResult.isBlank() || tapResult == "\n" -> "TAPPED: ($centerX,$centerY)"
+            tapResult.isBlank() || tapResult == "\n" -> "TAPPED: (${m.cx},${m.cy})"
             tapResult.contains("Error") -> "ERROR: tap failed: $tapResult"
-            else -> "TAPPED: ($centerX,$centerY) output=$tapResult"
+            else -> "TAPPED: (${m.cx},${m.cy}) output=$tapResult"
         }
     }
 

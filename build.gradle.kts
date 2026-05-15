@@ -27,8 +27,6 @@ kotlin {
 
 dependencies {
     implementation("io.ktor:ktor-server-core:3.1.3")
-    implementation("io.ktor:ktor-server-openapi:3.1.3")
-    implementation("io.ktor:ktor-server-swagger:3.1.3")
     implementation("io.ktor:ktor-server-call-logging:3.1.3")
     implementation("io.ktor:ktor-server-netty:3.1.3")
     implementation("io.ktor:ktor-server-config-yaml:3.1.3")

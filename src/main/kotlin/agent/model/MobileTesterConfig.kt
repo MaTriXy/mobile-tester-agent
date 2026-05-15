@@ -9,5 +9,5 @@ data class MobileTesterConfig(
     var executorInfo: ExecutorInfo = DeepSeekExecutor(),
     var llmTemperature: Double = 0.0,
     var maxAgentIterations: Int = 80,
-    var logTokensConsumption: Boolean = false
+    var logTokensConsumption: Boolean = true
 )

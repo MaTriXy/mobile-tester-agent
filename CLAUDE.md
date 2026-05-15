@@ -61,8 +61,6 @@ Updates the agent configuration at runtime (no restart needed).
 }
 ```
 
-Swagger UI is available at `/swagger`.
-
 ## LLM executors
 
 The active executor is set via `POST /config`. Available implementations in `agent/executor/`:

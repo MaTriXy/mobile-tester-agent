@@ -109,6 +109,35 @@ object AdbUtils {
      *
      * @return A formatted string with device information, or an error message.
      */
+    /**
+     * Returns the package name of the current foreground activity, or null if it can't be read.
+     */
+    fun foregroundPackage(): String? {
+        val output = runAdb("shell", "dumpsys", "activity", "top")
+        return Regex("ACTIVITY\\s+([a-zA-Z0-9_.]+)/").find(output)?.groups?.get(1)?.value
+    }
+
+    /**
+     * Launches an app by package via monkey, then verifies it reached the foreground.
+     * Retries once if the verification fails.
+     */
+    fun launchAndVerify(packageName: String): String {
+        repeat(2) { attempt ->
+            val launch = runAdb(
+                "shell", "monkey", "-p", packageName,
+                "-c", "android.intent.category.LAUNCHER", "1"
+            )
+            if (launch.contains("Error") || launch.contains("No activities")) {
+                return "ERROR: failed to launch '$packageName': $launch"
+            }
+            Thread.sleep(if (attempt == 0) 1500 else 2500)
+            val fg = foregroundPackage()
+            if (fg == packageName) return "OK: launched $packageName (foreground confirmed)"
+        }
+        val fg = foregroundPackage() ?: "unknown"
+        return "ERROR: launched '$packageName' but foreground is '$fg' after retry"
+    }
+
     fun deviceInformation(): String {
         return try {
             val manufacturer = runAdb("shell", "getprop", "ro.product.manufacturer")
