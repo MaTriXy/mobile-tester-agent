@@ -27,11 +27,17 @@ class MobileTestTools : ToolSet {
         if (connect.contains("No devices") || connect.startsWith("Failed") || connect.startsWith("Error")) {
             return "ERROR: $connect"
         }
+        // Wake the screen so UIAutomator captures real app UI, not AOD/lock screen.
+        AdbUtils.runAdb("shell", "input", "keyevent", "224") // KEYCODE_WAKEUP
+        Thread.sleep(500)
+        AdbUtils.runAdb("shell", "wm", "dismiss-keyguard")   // no-op when PIN-protected
+        Thread.sleep(300)
         if (appPackage.isNotBlank()) {
             val launch = AdbUtils.runAdb("shell", "monkey", "-p", appPackage, "-c", "android.intent.category.LAUNCHER", "1")
             if (launch.contains("Error") || launch.contains("No activities")) {
                 return "ERROR: connected but failed to launch '$appPackage': $launch"
             }
+            Thread.sleep(1500) // allow app to fully load before first UI query
             return "OK: connected; launched $appPackage"
         }
         return "OK: $connect"
