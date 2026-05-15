@@ -5,6 +5,7 @@ package agent
 import agent.model.MobileTesterConfig
 import agent.strategy.TestingStrategy
 import agent.tool.mobile.test.MobileTestTools
+import agent.tool.mobile.test.ReportingTools
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.GraphAIAgent
 import ai.koog.agents.core.agent.config.AIAgentConfig
@@ -39,6 +40,7 @@ object MobileTestAgent {
 
         val toolRegistry = ToolRegistry {
             tools(MobileTestTools())
+            tools(ReportingTools())
         }
 
         val agent = AIAgent(
