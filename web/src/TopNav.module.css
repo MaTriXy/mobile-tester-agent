@@ -1,0 +1,157 @@
+.nav {
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  width: 100%;
+  box-shadow: var(--shadow-sm);
+}
+
+.navContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1400px;
+  margin: 0 auto;
+  height: 56px;
+  padding: 0 24px;
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.link {
+  padding: 0 18px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  font-size: 0.92rem;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.link:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.link.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background-color: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.iconButton:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-soft);
+  text-decoration: none;
+}
+
+.iconButton:focus,
+.iconButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border-strong);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.themeToggle:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-soft);
+}
+
+.themeToggle:focus,
+.themeToggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.themeToggle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.themeToggleLabel {
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .navContent {
+    height: 52px;
+    padding: 0 16px;
+  }
+
+  .link {
+    padding: 0 14px;
+    font-size: 0.88rem;
+  }
+
+  .themeToggle {
+    padding: 5px 10px;
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .navContent {
+    height: 48px;
+    padding: 0 10px;
+  }
+
+  .link {
+    padding: 0 10px;
+    font-size: 0.82rem;
+  }
+
+  .themeToggle {
+    padding: 5px 8px;
+  }
+
+  .themeToggleLabel {
+    display: none;
+  }
+
+  .iconButton {
+    width: 28px;
+    height: 28px;
+  }
+}

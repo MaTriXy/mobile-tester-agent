@@ -1,0 +1,18 @@
+.footer {
+  width: 100%;
+  text-align: center;
+  padding: 1rem 1.5rem;
+  margin-top: auto;
+  font-size: 0.82rem;
+  color: var(--color-text-subtle);
+  background-color: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+
+.footer a {
+  color: var(--color-primary);
+}
+
+.footer a:hover {
+  color: var(--color-primary-hover);
+}
