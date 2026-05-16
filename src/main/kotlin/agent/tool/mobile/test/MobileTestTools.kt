@@ -1,199 +1,264 @@
 package agent.tool.mobile.test
 
 import agent.tool.mobile.test.utils.AdbUtils
-import agent.tool.mobile.test.utils.MediaUtils
 import agent.tool.mobile.test.utils.UiAutomatorUtils
 import agent.tool.mobile.test.utils.UiMatchResult
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
 
+/**
+ * All tools return strings prefixed with a STATUS token the agent can pattern-match:
+ *   OK | TAPPED | VISIBLE | NOT_VISIBLE | NOT_FOUND | AMBIGUOUS | ERROR | TIMEOUT
+ */
 class MobileTestTools : ToolSet {
 
     @Tool
     @LLMDescription(
-        "Connect the device or emulator and open the app if it is necessary" +
-                "THIS MUST BE THE INITIAL ACTION AND ONLY BE CALLED ONCE"
+        "Connect the device/emulator and launch the target app via ADB. Call ONCE as the first action. " +
+                "Connects ADB, wakes the screen, force-stops any stale instance, launches the package via monkey, " +
+                "then verifies the package is foreground. After this returns OK the app IS open — do NOT tap " +
+                "a launcher icon or home screen to open it. " +
+                "Returns 'OK: launched <package> (foreground confirmed)' or 'ERROR: ...'."
     )
     fun startTestingScenario(
-        @LLMDescription("The name of the app which will tapped in the screen.")
-        appName: String
+        @LLMDescription("Android package name to launch, e.g. com.maikogram. Required.")
+        appPackage: String
     ): String {
-        connectDevice()
-        return tap(appName)
+        if (appPackage.isBlank()) return "ERROR: appPackage is required"
+        val connect = AdbUtils.connectDevice()
+        if (connect.contains("No devices") || connect.startsWith("Failed") || connect.startsWith("Error")) {
+            return "ERROR: $connect"
+        }
+        AdbUtils.runAdb("shell", "input", "keyevent", "224") // KEYCODE_WAKEUP
+        Thread.sleep(300)
+        AdbUtils.runAdb("shell", "wm", "dismiss-keyguard")
+        Thread.sleep(200)
+        // Force-stop any stale instance so launch starts from a clean state.
+        AdbUtils.runAdb("shell", "am", "force-stop", appPackage)
+        Thread.sleep(200)
+        return AdbUtils.launchAndVerify(appPackage)
     }
 
     @Tool
     @LLMDescription(
-        "Find all UI elements whose text, content-desc, or resource-id matches or" +
-                " contains the given string, considering Android Accessibility tags."
+        "Find UI elements whose text, content-desc, or resource-id contains the given string (case-insensitive, partial). " +
+                "Use when you need to inspect candidates before tapping, or to verify presence. " +
+                "Search text may differ slightly from on-screen text (case, partial, synonym) — try variations if empty. " +
+                "Returns a list of matches (empty list = not found)."
     )
     fun findUiElementsByText(
-        @LLMDescription("The text to search for in the UI elements.")
-        text: String
+        @LLMDescription("Text fragment to search for (case-insensitive substring match).")
+        text: String,
+        @LLMDescription("Attribute to filter on: 'text', 'content-desc', 'resource-id', or 'any' (default).")
+        selectorType: String = "any"
     ): List<UiMatchResult> {
-        return try {
-            UiAutomatorUtils.findUiElementsByText(text)
-        } catch (e: NoSuchElementException) {
-            println(e.localizedMessage)
-            emptyList()
-        }
+        return UiAutomatorUtils.findUiElementsByText(text, selectorType)
     }
 
     @Tool
     @LLMDescription(
-        "Tap element by text, content-desc, or resource-id: " +
-                "Locate and tap the clickable UI element that best matches the provided text, " +
-                "content-desc, or resource-id, " +
-                "even if the text is not an exact match or is only a partial phrase. " +
-                "Prioritize elements relevant to the current screen's context. " +
-                "If there is more than one clickable button, use its position to define which button to click. "
+        "Tap a UI element by selector. Preferred over tapByCoordinates. " +
+                "Returns 'TAPPED: (x,y)' on success, 'NOT_FOUND: ...' if no match, " +
+                "'AMBIGUOUS: <n> matches — retry with position=<i>' if multiple matches and position is out of range. " +
+                "When ambiguous, retry with position=1, 2, ... — do not re-search with different text."
     )
     fun tap(
-        @LLMDescription("The text, content-desc, or resource-id of the element to tap.")
+        @LLMDescription("Selector value (text, content-desc, or resource-id fragment).")
         text: String,
-        @LLMDescription("The position of the element to tap if multiple elements are found.")
+        @LLMDescription("Attribute to match on: 'text', 'content-desc', 'resource-id', or 'any' (default).")
+        selectorType: String = "any",
+        @LLMDescription("0-based index when multiple elements match. Default 0 = first match.")
         position: Int = 0
     ): String {
-        val clickableUIs = findUiElementsByText(text)
-        return UiAutomatorUtils.tapByText(clickableUIs, position)
+        val matches = UiAutomatorUtils.findUiElementsByText(text, selectorType)
+        return when {
+            matches.isEmpty() -> "NOT_FOUND: no element matches '$text' (selectorType=$selectorType)"
+            position !in matches.indices && matches.size > 1 ->
+                "AMBIGUOUS: ${matches.size} matches for '$text' — retry with position in 0..${matches.size - 1}"
+            else -> UiAutomatorUtils.tapByText(matches, position.coerceIn(0, matches.size - 1))
+        }
     }
 
     @Tool
     @LLMDescription(
-        "Scrolls the screen vertically to simulate user interaction. " +
-                "Use a positive distance (e.g., 1000) to scroll upward (i.e., swipe up), " +
-                "and a negative distance to scroll downward (i.e., swipe down). " +
-                "Optional: specify duration in milliseconds to control swipe speed. " +
-                "Example: scrollVertically(distance = 1500, durationMs = 500)"
+        "Tap exact screen coordinates. Use ONLY as a fallback when selector-based tap cannot find the element. " +
+                "Returns 'TAPPED: (x,y)' or 'ERROR: ...'."
+    )
+    fun tapByCoordinates(
+        @LLMDescription("X coordinate in pixels.") x: Int,
+        @LLMDescription("Y coordinate in pixels.") y: Int
+    ): String = UiAutomatorUtils.tapByCoordinates(x, y)
+
+    @Tool
+    @LLMDescription(
+        "Verify a UI element is visible on the current screen. Call after an action to confirm the expected state. " +
+                "Returns 'VISIBLE: <n> match(es)' or 'NOT_VISIBLE: ...'. " +
+                "If NOT_VISIBLE, consider scrolling or waiting before declaring the step failed."
+    )
+    fun verifyElementVisible(
+        @LLMDescription("Text fragment expected on screen.") text: String,
+        @LLMDescription("Attribute to match on: 'text', 'content-desc', 'resource-id', or 'any' (default).")
+        selectorType: String = "any"
+    ): String {
+        val matches = UiAutomatorUtils.findUiElementsByText(text, selectorType)
+        return if (matches.isEmpty()) "NOT_VISIBLE: '$text' not on screen"
+        else "VISIBLE: ${matches.size} match(es) for '$text'"
+    }
+
+    @Tool
+    @LLMDescription(
+        "Verify a UI element is NOT visible. Use to confirm a screen transition has occurred (the old element is gone). " +
+                "Returns 'OK: gone' or 'NOT_VISIBLE: still present'."
+    )
+    fun verifyElementNotVisible(
+        @LLMDescription("Text fragment that should NOT be on screen.") text: String,
+        @LLMDescription("Attribute to match on: 'text', 'content-desc', 'resource-id', or 'any' (default).")
+        selectorType: String = "any"
+    ): String {
+        val matches = UiAutomatorUtils.findUiElementsByText(text, selectorType)
+        return if (matches.isEmpty()) "OK: '$text' is not visible (as expected)"
+        else "NOT_VISIBLE: '$text' is still visible (${matches.size} match(es))"
+    }
+
+    @Tool
+    @LLMDescription(
+        "Pause execution for the given milliseconds. Use after navigation, animations, or async loads (typically 300–1500ms). " +
+                "Bounded 50..10000. Returns 'OK: waited <ms>ms'."
+    )
+    suspend fun wait(
+        @LLMDescription("Milliseconds to sleep (50..10000).") ms: Int
+    ): String {
+        val bounded = ms.coerceIn(50, 10000)
+        kotlinx.coroutines.delay(bounded.toLong())
+        return "OK: waited ${bounded}ms"
+    }
+
+    @Tool
+    @LLMDescription(
+        "Dump the raw UI hierarchy XML of the current screen. Use ONLY when stuck — prefer findUiElementsByText for targeted queries. " +
+                "Truncated to ~2KB. Returns the XML string or 'ERROR: ...'."
+    )
+    fun getScreenDump(): String {
+        val xml = UiAutomatorUtils.dumpUiHierarchy()
+        if (xml.startsWith("ERROR:")) return xml
+        return if (xml.length > 2000) xml.take(2000) + "\n... [truncated, use findUiElementsByText for targeted search]"
+        else xml
+    }
+
+    @Tool
+    @LLMDescription(
+        "Get the device screen size in pixels. Returns 'OK: <width>x<height>' or 'ERROR: ...'. " +
+                "Useful before computing scroll distances on tablets."
+    )
+    fun getScreenSize(): String {
+        val size = UiAutomatorUtils.getScreenSize() ?: return "ERROR: could not read screen size"
+        return "OK: ${size.first}x${size.second}"
+    }
+
+    @Tool
+    @LLMDescription(
+        "Swipe up ~70% of screen height (reveals content below). Adaptive to device size. " +
+                "Prefer this over scrollVertically for normal scrolling."
+    )
+    fun swipeUp(): String {
+        val (w, h) = UiAutomatorUtils.getScreenSize() ?: (1080 to 1920)
+        return UiAutomatorUtils.scrollScreenVertically(distance = (h * 0.6).toInt(), durationMs = 300)
+            .let { if (it.startsWith("OK")) "OK: swiped up on ${w}x${h}" else it }
+    }
+
+    @Tool
+    @LLMDescription(
+        "Swipe down ~70% of screen height (reveals content above). Adaptive to device size. " +
+                "Prefer this over scrollVertically for normal scrolling."
+    )
+    fun swipeDown(): String {
+        val (w, h) = UiAutomatorUtils.getScreenSize() ?: (1080 to 1920)
+        return UiAutomatorUtils.scrollScreenVertically(distance = -(h * 0.6).toInt(), durationMs = 300)
+            .let { if (it.startsWith("OK")) "OK: swiped down on ${w}x${h}" else it }
+    }
+
+    @Tool
+    @LLMDescription(
+        "Precise vertical scroll by pixel distance. Use swipeUp/swipeDown for normal scrolling. " +
+                "Positive distance = swipe up (scroll content up); negative = swipe down."
     )
     fun scrollVertically(
-        @LLMDescription("The distance to scroll. Positive for up, negative for down.")
-        distance: Int = 1000,
-        @LLMDescription("The duration of the scroll in milliseconds.")
-        durationMs: Int = 300
-    ): String {
-        return UiAutomatorUtils.scrollScreenVertically(distance, durationMs)
-    }
+        @LLMDescription("Pixels. Positive = up, negative = down.") distance: Int = 1000,
+        @LLMDescription("Swipe duration in ms.") durationMs: Int = 300
+    ): String = UiAutomatorUtils.scrollScreenVertically(distance, durationMs)
 
     @Tool
     @LLMDescription(
-        "Scrolls the screen horizontally to simulate user interaction. " +
-                "Use a positive distance (e.g., 1000) to scroll right (i.e., swipe left to right), " +
-                "and a negative distance to scroll left (i.e., swipe right to left). "
+        "Precise horizontal scroll by pixel distance. Positive distance = swipe right; negative = swipe left."
     )
     fun scrollHorizontally(
-        @LLMDescription("The distance to scroll. Positive for right, negative for left.")
-        distance: Int = 1000,
-        @LLMDescription("The duration of the scroll in milliseconds.")
-        durationMs: Int = 300
-    ): String {
-        return UiAutomatorUtils.scrollScreenHorizontally(distance, durationMs)
-    }
+        @LLMDescription("Pixels. Positive = right, negative = left.") distance: Int = 1000,
+        @LLMDescription("Swipe duration in ms.") durationMs: Int = 300
+    ): String = UiAutomatorUtils.scrollScreenHorizontally(distance, durationMs)
 
     @Tool
     @LLMDescription(
-        "Input text into a UI element by its selector. " +
-                "The selector should be the text of the element. " +
-                "The keyboard must be hidden after inputting text. " +
-                "Returns a success or error message."
+        "Type text into an input field identified by selector. Auto-hides the keyboard after typing. " +
+                "Returns 'OK: typed ...', 'NOT_FOUND: ...', or 'ERROR: ...'."
     )
     fun inputText(
-        @LLMDescription("The selector of the UI element to input text into.")
-        selector: String,
-        @LLMDescription("The text to input.")
-        text: String
+        @LLMDescription("Selector matching the input field's text, hint (content-desc), or resource-id.")
+        fieldSelector: String,
+        @LLMDescription("Text to type.")
+        text: String,
+        @LLMDescription("Attribute to match on: 'text', 'content-desc', 'resource-id', or 'any' (default).")
+        selectorType: String = "any"
     ): String {
-        return UiAutomatorUtils.inputTextBySelector(selector, text)
+        val result = UiAutomatorUtils.inputTextBySelector(fieldSelector, text, selectorType)
+        if (result.startsWith("OK")) hideKeyboard()
+        return result
     }
 
     @Tool
-    @LLMDescription("Go back in the app navigation by simulating the Android back button.")
+    @LLMDescription("Press the Android back button. Returns 'OK: ...' or 'ERROR: ...'.")
     fun goBack(): String {
         val result = AdbUtils.runAdb("shell", "input", "keyevent", "4")
-        return if (result.contains("Error")) "Failed to go back: $result" else "Went back in navigation."
+        return if (result.contains("Error")) "ERROR: back failed: $result" else "OK: pressed back"
     }
 
     @Tool
     @LLMDescription(
-        "Hide keyboard by simulating user input or back press." +
-                "Usually the keyboard should be hidden after a text is input."
+        "Hide the on-screen keyboard. inputText auto-hides, so call this only after manual key events. " +
+                "Returns 'OK: ...' or 'ERROR: ...'."
     )
     fun hideKeyboard(): String {
-        // First try dismissing it by sending an empty input text
-        var result = AdbUtils.runAdb("shell", "input", "text", "\"\"")
-
-        // If that fails, try the KEYCODE_BACK as a fallback
-        if (result.contains("Error") || result.isBlank()) {
-            result = AdbUtils.runAdb("shell", "input", "keyevent", "111") // KEYCODE_ESCAPE (API 11+)
-            if (result.contains("Error") || result.isBlank()) {
-                result = AdbUtils.runAdb("shell", "input", "keyevent", "4") // KEYCODE_BACK
-            }
-        }
-
-        return if (result.contains("Error")) "Failed to hide keyboard: $result" else "Keyboard hidden successfully."
+        // KEYCODE_BACK (4) is the only reliable way to dismiss the soft keyboard on this device.
+        // KEYCODE_ESCAPE (111) leaves the keyboard showing. BACK dismisses keyboard on first press;
+        // a second press would navigate back, but only if keyboard is already gone.
+        val result = AdbUtils.runAdb("shell", "input", "keyevent", "4")
+        Thread.sleep(500) // wait for keyboard animation to complete before next UI query
+        return if (result.contains("Error")) "ERROR: hide keyboard failed: $result" else "OK: keyboard hidden"
     }
 
     @Tool
     @LLMDescription(
-        "Take a screenshot of the current screen and pull it to a remote path. " +
-                "`goalName` is the test goal name. " +
-                "Returns the local file path or error message. "
+        "Launch an Android app by package name (e.g. com.android.settings). " +
+                "Use mid-test when scenario switches apps. Returns 'OK: ...' or 'ERROR: ...'."
     )
-    suspend fun takeScreenshot(
-        @LLMDescription("The name of the goal for which the screenshot is being taken.")
-        goalName: String
+    fun launchAppByPackage(
+        @LLMDescription("Android package name, e.g. com.android.settings.") packageName: String
     ): String {
-        return MediaUtils.takeScreenshot(goalName)
+        val result = AdbUtils.runAdb(
+            "shell", "monkey", "-p", packageName, "-c", "android.intent.category.LAUNCHER", "1"
+        )
+        return if (result.contains("Error") || result.contains("No activities")) "ERROR: launch failed: $result"
+        else "OK: launched $packageName"
     }
 
     @Tool
     @LLMDescription(
-        "Start recording a video of the device screen. " +
-                "This will record until you call stopScreenRecording. " +
-                "Returns a message indicating recording has started or an error."
-    )
-    suspend fun startScreenRecording(): String {
-        return MediaUtils.startScreenRecording()
-    }
-
-    @Tool
-    @LLMDescription(
-        "Stop the ongoing screen recording, pull the video to the local machine, " +
-                "and return the local file path or error message."
-    )
-    suspend fun stopScreenRecording(): String {
-        return MediaUtils.stopScreenRecording()
-    }
-
-    @Tool
-    @LLMDescription(
-        "Connect to a local Android device or emulator using ADB. " +
-                "If the device is offline, the ADB server will be restarted and the connection retried. "
-    )
-    fun connectDevice(): String {
-        return AdbUtils.connectDevice()
-    }
-
-    @Tool
-    @LLMDescription(
-        description = "Get detailed information about the connected Android device using adb, " +
-                "including manufacturer, model, Android version, SDK, platform, total memory," +
-                " data partition usage, battery level, and IP address."
-    )
-    fun deviceInformation(): String {
-        return AdbUtils.deviceInformation()
-    }
-
-    @Tool
-    @LLMDescription(
-        "Close the currently active foreground app on a connected Android device via ADB." +
-                "Identifies the package name of the app currently in focus, then runs `adb shell am force-stop " +
-                "to close it." +
-                "THIS MUST BE THE LAST ACTION AND ONLY BE CALLED ONCE."
+        "Force-stop the current foreground app. Call ONCE as the final action of the test scenario. " +
+                "Returns 'OK: ...' or 'ERROR: ...'."
     )
     fun closeApp(): String {
         val result = AdbUtils.closeCurrentApp()
-        return result
+        return if (result.startsWith("Failed") || result.startsWith("Error")) "ERROR: $result"
+        else "OK: $result"
     }
 }

@@ -1,15 +1,21 @@
 package agent.tool.mobile.test.utils
 
 object AdbUtils {
+    /** Serial of the device targeted for this test session. Set by connectDevice(). */
+    var targetSerial: String? = null
+
     /**
-     * Runs an adb command with the given arguments.
-     *
-     * @param args The arguments to pass to the adb command.
-     * @return The output of the command, or an error message if it fails.
+     * Runs an adb command with the given arguments, targeting [targetSerial] when set.
+     * This ensures commands go to the right device when multiple are attached.
      */
     fun runAdb(vararg args: String): String {
         return try {
-            val process = ProcessBuilder("adb", *args)
+            val cmd = buildList {
+                add("adb")
+                targetSerial?.let { add("-s"); add(it) }
+                addAll(args.toList())
+            }
+            val process = ProcessBuilder(cmd)
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
@@ -58,9 +64,13 @@ object AdbUtils {
                 } else {
                     val offline = devices.filter { it.contains("offline") }
                     val online = devices.filter { it.contains("device") && !it.contains("offline") }
+                    // Pin the target: prefer emulator, otherwise first online device.
+                    targetSerial = (online.firstOrNull { it.startsWith("emulator") } ?: online.firstOrNull())
+                        ?.split("\t")?.first()
                     buildString {
                         if (online.isNotEmpty()) append("Connected devices:\n${online.joinToString("\n")}\n")
                         if (offline.isNotEmpty()) append("Devices offline (check connection):\n${offline.joinToString("\n")}")
+                        targetSerial?.let { append("\nTargeting: $it") }
                     }.trim()
                 }
             } else {
@@ -99,6 +109,35 @@ object AdbUtils {
      *
      * @return A formatted string with device information, or an error message.
      */
+    /**
+     * Returns the package name of the current foreground activity, or null if it can't be read.
+     */
+    fun foregroundPackage(): String? {
+        val output = runAdb("shell", "dumpsys", "activity", "top")
+        return Regex("ACTIVITY\\s+([a-zA-Z0-9_.]+)/").find(output)?.groups?.get(1)?.value
+    }
+
+    /**
+     * Launches an app by package via monkey, then verifies it reached the foreground.
+     * Retries once if the verification fails.
+     */
+    fun launchAndVerify(packageName: String): String {
+        repeat(2) { attempt ->
+            val launch = runAdb(
+                "shell", "monkey", "-p", packageName,
+                "-c", "android.intent.category.LAUNCHER", "1"
+            )
+            if (launch.contains("Error") || launch.contains("No activities")) {
+                return "ERROR: failed to launch '$packageName': $launch"
+            }
+            Thread.sleep(if (attempt == 0) 1500 else 2500)
+            val fg = foregroundPackage()
+            if (fg == packageName) return "OK: launched $packageName (foreground confirmed)"
+        }
+        val fg = foregroundPackage() ?: "unknown"
+        return "ERROR: launched '$packageName' but foreground is '$fg' after retry"
+    }
+
     fun deviceInformation(): String {
         return try {
             val manufacturer = runAdb("shell", "getprop", "ro.product.manufacturer")

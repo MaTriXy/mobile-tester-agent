@@ -7,5 +7,5 @@ import io.github.cdimascio.dotenv.dotenv
 class GeminiExecutor : ExecutorInfo {
     val dotenv = dotenv()
     override val executor = simpleGoogleAIExecutor(dotenv["GEMINI_API_KEY"])
-    override val llmModel = GoogleModels.Gemini2_0Flash
+    override val llmModel = GoogleModels.Gemini2_5Flash
 }

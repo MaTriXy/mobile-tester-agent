@@ -1,106 +1,101 @@
 package agent.tool.mobile.test.utils
 
 object UiAutomatorUtils {
-    /**
-     * Dumps the current UI hierarchy using UIAutomator and returns the XML as a String.
-     * Considers Android Accessibility tags (content-desc, resource-id, etc).
-     *
-     * @return The UI hierarchy as an XML string, or an error message if it fails.
-     */
-    private fun dumpUiHierarchy(): String {
+
+    private val NOISE_ATTRS = Regex(
+        " (?:index|package|class|checkable|checked|focusable|focused|scrollable|" +
+                "long-clickable|password|selected|NAF|instance|rotation)=\"[^\"]*\""
+    )
+
+    fun dumpUiHierarchy(): String {
         val dumpResult = AdbUtils.runAdb("shell", "uiautomator", "dump")
         if (dumpResult.contains("Error")) {
-            return "Failed to dump UI hierarchy: $dumpResult"
+            return "ERROR: Failed to dump UI hierarchy: $dumpResult"
         }
         val xmlPath = "/sdcard/window_dump.xml"
         val xml = AdbUtils.runAdb("shell", "cat", xmlPath)
         if (xml.isBlank() || xml.contains("Error") || xml.startsWith("Failed"))
-            return "Failed to read UI hierarchy XML."
-        return xml
+            return "ERROR: Failed to read UI hierarchy XML."
+        return NOISE_ATTRS.replace(xml, "")
+    }
+
+    fun getScreenSize(): Pair<Int, Int>? {
+        val output = AdbUtils.runAdb("shell", "wm", "size")
+        val match = Regex("(\\d+)x(\\d+)").find(output) ?: return null
+        return match.groupValues[1].toInt() to match.groupValues[2].toInt()
     }
 
     /**
-     * Finds all UI elements on the current screen whose text, content-desc, or resource-id matches or contains the given string.
-     * Uses a regex search on the UIAutomator XML dump to locate nodes with matching attributes.
+     * Finds UI nodes whose chosen attribute contains [text] (case-insensitive substring).
+     * The text passed in MAY differ slightly from on-screen text (synonym, case, partial phrase).
      *
-     * THE PARAMETER text TO BE FOUND MAY HAVE VARIATIONS. DO NOT STICK TO THE LITERAL TEXT. IT MIGHT APPEAR SLIGHTLY
-     * DIFFERENT ON THE SCREEN, FOR EXAMPLE, AS PART OF A SHORT PHRASE, AS A SYNONYM, OR IN UPPERCASE LETTERS.
-     *
-     * @param text The text to search for in UI elements.
-     * @return A list of MatchResult objects for each matching UI element found.
-     * @throws NoSuchElementException if no UI element with the given text is found.
+     * @param selectorType one of "text" | "content-desc" | "resource-id" | "any" (default).
+     * @return list of matches; empty if nothing found.
      */
-    fun findUiElementsByText(text: String): List<UiMatchResult> {
+    fun findUiElementsByText(text: String, selectorType: String = "any"): List<UiMatchResult> {
         val xml = dumpUiHierarchy()
+        if (xml.startsWith("ERROR:")) return emptyList()
+        val escaped = Regex.escape(text)
+        val attrClause = when (selectorType.lowercase()) {
+            "text" -> "text=\"([^\"]*$escaped[^\"]*)\""
+            "content-desc" -> "content-desc=\"([^\"]*$escaped[^\"]*)\""
+            "resource-id" -> "resource-id=\"([^\"]*$escaped[^\"]*)\""
+            else -> "(?:text=\"([^\"]*$escaped[^\"]*)\"|content-desc=\"([^\"]*$escaped[^\"]*)\"|resource-id=\"([^\"]*$escaped[^\"]*)\")"
+        }
         val regex = Regex(
-            "<node[^>]*(text=\"([^\"]*${Regex.escape(text)}[^\"]*)\"|content-desc=\"([^\"]*${
-                Regex.escape(
-                    text
-                )
-            }[^\"]*)\"|resource-id=\"([^\"]*${Regex.escape(text)}[^\"]*)\")[^>]*bounds=\"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]\"",
+            "<node[^>]*$attrClause[^>]*bounds=\"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]\"",
             RegexOption.IGNORE_CASE
         )
-        val matches = regex.findAll(xml).toList()
-        if (matches.isEmpty()) throw NoSuchElementException("No UI element found with text/accessibility: '$text'")
-        return matches.map { match -> UiMatchResult(match.groupValues) }
-    }
-
-    /**
-     * Taps on a UI element by its text, content-desc, or resource-id using UIAutomator dump and adb input tap.
-     *
-     * @param matches The list of UI elements to choose from.
-     * @param position The index of the element to tap in the matches list.
-     * @return A success message or an error if the element is not found or the tap fails.
-     */
-    fun tapByText(matches: List<UiMatchResult>, position: Int): String {
-        if (matches.isEmpty()) throw NoSuchElementException("No UI elements to tap.")
-        if (position !in matches.indices) throw IndexOutOfBoundsException("position $position is out of bounds for matches list of size ${matches.size}.")
-        // The regex may have up to 4 capturing groups before bounds, so find the bounds at the end
-        val groups = matches[position].groupValues
-        val x1 = groups[groups.size - 4]
-        val y1 = groups[groups.size - 3]
-        val x2 = groups[groups.size - 2]
-        val y2 = groups[groups.size - 1]
-        val centerX = (x1.toInt() + x2.toInt()) / 2
-        val centerY = (y1.toInt() + y2.toInt()) / 2
-        val tapResult = AdbUtils.runAdb("shell", "input", "tap", centerX.toString(), centerY.toString())
-        return when {
-            tapResult.isBlank() || tapResult == "\n" -> "Tapped element at ($centerX, $centerY)."
-            tapResult.contains("Error") -> "Tap command failed: $tapResult"
-            else -> "Tap command output: $tapResult"
+        return regex.findAll(xml).toList().map { match ->
+            val groups = match.groupValues
+            val value = groups.drop(1).dropLast(4).firstOrNull { it.isNotEmpty() } ?: ""
+            val n = groups.size
+            val cx = (groups[n - 4].toInt() + groups[n - 2].toInt()) / 2
+            val cy = (groups[n - 3].toInt() + groups[n - 1].toInt()) / 2
+            UiMatchResult(value, cx, cy)
         }
     }
 
-    /**
-     * Finds a UI element by selector (text), taps it, and inputs the given text.
-     *
-     * @param selector The text to search for in UI elements.
-     * @param text The text to input into the element.
-     * @return A success or error message.
-     */
-    fun inputTextBySelector(selector: String, text: String): String {
+    fun tapByText(matches: List<UiMatchResult>, position: Int): String {
+        if (matches.isEmpty()) return "NOT_FOUND: no UI elements to tap"
+        if (position !in matches.indices) {
+            return "ERROR: position $position out of bounds (${matches.size} matches)"
+        }
+        val m = matches[position]
+        val tapResult = AdbUtils.runAdb("shell", "input", "tap", m.cx.toString(), m.cy.toString())
+        return when {
+            tapResult.isBlank() || tapResult == "\n" -> "TAPPED: (${m.cx},${m.cy})"
+            tapResult.contains("Error") -> "ERROR: tap failed: $tapResult"
+            else -> "TAPPED: (${m.cx},${m.cy}) output=$tapResult"
+        }
+    }
+
+    fun inputTextBySelector(selector: String, text: String, selectorType: String = "any"): String {
         return try {
-            val matches = findUiElementsByText(selector)
-            if (matches.isEmpty()) return "No element found with selector: $selector"
-            tapByText(matches, 0)
+            val matches = findUiElementsByText(selector, selectorType)
+            if (matches.isEmpty()) return "NOT_FOUND: no input field matches selector '$selector'"
+            val tapResult = tapByText(matches, 0)
+            if (tapResult.startsWith("ERROR") || tapResult.startsWith("NOT_FOUND")) {
+                return tapResult
+            }
             val encodedText = text.replace(" ", "%s")
             val inputResult = AdbUtils.runAdb("shell", "input", "text", encodedText)
-            if (inputResult.contains("Error")) "Failed to input text: $inputResult" else "Input text '$text' into element with selector '$selector'"
+            if (inputResult.contains("Error")) "ERROR: input text failed: $inputResult"
+            else "OK: typed '$text' into '$selector'"
         } catch (e: Exception) {
-            "Error inputting text: ${e.message}"
+            "ERROR: ${e.message}"
         }
     }
 
-    /**
-     * Performs a swipe gesture from (startX, startY) to (endX, endY).
-     *
-     * @param startX The starting X coordinate.
-     * @param startY The starting Y coordinate.
-     * @param endX The ending X coordinate.
-     * @param endY The ending Y coordinate.
-     * @param durationMs The duration of the swipe in ms.
-     * @return The result of the adb command.
-     */
+    fun tapByCoordinates(x: Int, y: Int): String {
+        val tapResult = AdbUtils.runAdb("shell", "input", "tap", x.toString(), y.toString())
+        return when {
+            tapResult.isBlank() -> "TAPPED: ($x,$y)"
+            tapResult.contains("Error") -> "ERROR: tap failed: $tapResult"
+            else -> "TAPPED: ($x,$y) output=$tapResult"
+        }
+    }
+
     private fun swipeScreen(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int): String {
         return AdbUtils.runAdb(
             "shell", "input", "swipe",
@@ -109,30 +104,30 @@ object UiAutomatorUtils {
     }
 
     /**
-     * Scrolls the screen vertically.
-     *
-     * @param distance The distance in pixels to scroll. Positive scrolls up, negative scrolls down. Default is 1000 (up).
-     * @param durationMs The duration of the swipe in ms. Default is 300.
-     * @return The result of the adb command.
+     * Vertical scroll. Adapts start coordinates to actual screen size.
+     * Positive distance = scroll up (swipe up); negative = scroll down.
      */
     fun scrollScreenVertically(distance: Int = 1000, durationMs: Int = 300): String {
-        val startX = 500
-        val startY = if (distance > 0) 1500 else 500
-        val endY = startY - distance
-        return swipeScreen(startX, startY, startX, endY, durationMs)
+        val (width, height) = getScreenSize() ?: (1080 to 1920)
+        val startX = width / 2
+        val startY = if (distance > 0) (height * 0.75).toInt() else (height * 0.25).toInt()
+        val endY = (startY - distance).coerceIn(0, height)
+        val result = swipeScreen(startX, startY, startX, endY, durationMs)
+        return if (result.contains("Error")) "ERROR: vertical scroll failed: $result"
+        else "OK: scrolled vertically distance=$distance"
     }
 
     /**
-     * Scrolls the screen horizontally.
-     *
-     * @param distance The distance in pixels to scroll. Positive scrolls right, negative scrolls left. Default is 1000 (right).
-     * @param durationMs The duration of the swipe in ms. Default is 300.
-     * @return The result of the adb command.
+     * Horizontal scroll. Adapts start coordinates to actual screen size.
+     * Positive distance = scroll right; negative = scroll left.
      */
     fun scrollScreenHorizontally(distance: Int = 1000, durationMs: Int = 300): String {
-        val startY = 1000
-        val startX = if (distance > 0) 500 else 1500
-        val endX = startX + distance
-        return swipeScreen(startX, startY, endX, startY, durationMs)
+        val (width, height) = getScreenSize() ?: (1080 to 1920)
+        val startY = height / 2
+        val startX = if (distance > 0) (width * 0.25).toInt() else (width * 0.75).toInt()
+        val endX = (startX + distance).coerceIn(0, width)
+        val result = swipeScreen(startX, startY, endX, startY, durationMs)
+        return if (result.contains("Error")) "ERROR: horizontal scroll failed: $result"
+        else "OK: scrolled horizontally distance=$distance"
     }
 }
