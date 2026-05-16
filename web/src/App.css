@@ -1,0 +1,27 @@
+#root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--color-bg);
+}
+
+main, .page {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 24px 24px 40px;
+}
+
+@media (max-width: 768px) {
+  main, .page {
+    padding: 16px 12px 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  main, .page {
+    padding: 12px 8px 24px;
+  }
+}

@@ -1,0 +1,162 @@
+:root {
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Light theme (default) */
+  --color-bg: #eef2f6;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f5f7fa;
+  --color-surface-muted: #eaeef3;
+
+  --color-border: #d8dee6;
+  --color-border-strong: #c2cad6;
+
+  --color-text: #1a2332;
+  --color-text-muted: #4a5568;
+  --color-text-subtle: #6b7785;
+
+  --color-primary: #2c5282;
+  --color-primary-hover: #1e3a5f;
+  --color-primary-soft: #e6eef5;
+  --color-primary-border: #b6c8db;
+  --color-primary-contrast: #ffffff;
+
+  --color-accent: #3a6ea5;
+  --color-danger: #8a3838;
+  --color-danger-soft: #f1dada;
+  --color-success: #2f5d3a;
+  --color-success-soft: #dbe7de;
+
+  --color-focus-ring: rgba(44, 82, 130, 0.18);
+
+  --shadow-sm: 0 1px 2px rgba(26, 35, 50, 0.04);
+  --shadow-md: 0 2px 6px rgba(26, 35, 50, 0.06);
+  --shadow-lg: 0 4px 12px rgba(26, 35, 50, 0.08);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --color-bg: #0f1620;
+  --color-surface: #1a2332;
+  --color-surface-alt: #212c3d;
+  --color-surface-muted: #2a3648;
+
+  --color-border: #2f3b4e;
+  --color-border-strong: #3d4a60;
+
+  --color-text: #e4e9f0;
+  --color-text-muted: #a8b2c1;
+  --color-text-subtle: #7e889a;
+
+  --color-primary: #6a9bd1;
+  --color-primary-hover: #8ab3df;
+  --color-primary-soft: #233246;
+  --color-primary-border: #3d557a;
+  --color-primary-contrast: #0f1620;
+
+  --color-accent: #6a9bd1;
+  --color-danger: #d68c8c;
+  --color-danger-soft: #3a2424;
+  --color-success: #8fbf9b;
+  --color-success-soft: #1f2f24;
+
+  --color-focus-ring: rgba(106, 155, 209, 0.25);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.45);
+
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+a {
+  font-weight: 500;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-text);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+  margin-bottom: 1.25rem;
+}
+
+p {
+  margin-bottom: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+button {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-primary);
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: var(--color-primary);
+  color: var(--color-primary-contrast);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+button:focus,
+button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  background-color: var(--color-border);
+  border-color: var(--color-border);
+  color: var(--color-text-subtle);
+  cursor: not-allowed;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
